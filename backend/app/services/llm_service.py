@@ -133,6 +133,26 @@ async def _chat_once(prov: _Provider, req: ChatRequest, *, include_raw: bool) ->
         except httpx.HTTPError as exc:
             raise LlmServiceError(f"LLM connection failed ({prov.name}): {exc}") from exc
 
+        # Some OpenAI-compatible gateways/models intermittently reject the
+        # response_format constraint (HTTP 400), even though they accept the
+        # same request as ordinary chat completions. Follow-up parsing already
+        # tolerates fenced/loose JSON, so retry once without that optional hint.
+        if r.status_code == 400 and payload.get("response_format") == {"type": "json_object"}:
+            retry_payload = {**payload}
+            retry_payload.pop("response_format", None)
+            logger.warning(
+                "LLM provider '%s' rejected JSON response_format (HTTP 400); retrying without it",
+                prov.name,
+            )
+            try:
+                r = await client.post(
+                    f"{prov.base_url}/chat/completions",
+                    json=retry_payload,
+                    headers={"Authorization": f"Bearer {prov.api_key}"},
+                )
+            except httpx.HTTPError as exc:
+                raise LlmServiceError(f"LLM connection failed on compatibility retry ({prov.name}): {exc}") from exc
+
     if r.status_code >= 400:
         raise LlmServiceError(
             f"LLM upstream error ({prov.name} {r.status_code})",

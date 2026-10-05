@@ -37,11 +37,15 @@ export default function StudentReport() {
   // 實際顯示用的 quizId 以 backendRow 為準，確保題目/標題與資料一致。
   const reportQuizId = activeStudentReport?.quizId || backendRow?.quizId || requestedQuizId;
 
-  const reportQuestions = getQuizQuestions(reportQuizId);
   // 題組名稱：優先 in-memory 快照；其次 DB；最後現抓 quiz 詳情
-  const { data: quizDetail } = useQuiz(reportQuizId);
+  const { data: quizDetail, isLoading: quizDetailLoading } = useQuiz(reportQuizId);
   const reportQuizTitle =
     activeStudentReport?.quizTitle || backendRow?.quizTitle || quizDetail?.title || '科學診斷';
+  // 教師自建題組不在前端 demo 題庫中；剛完成時答案來自記憶體，逐題卡片
+  // 必須用已取得的後端題目（id 仍是題組內 1-based order index）配回題幹/選項。
+  const reportQuestions = quizDetail?.questions?.length
+    ? quizDetail.questions
+    : getQuizQuestions(reportQuizId);
   const answerSource = activeStudentReport?.answers || [];
   const misconceptionSource =
     activeStudentReport?.misconceptions || backendRow?.misconceptions || [];
@@ -136,6 +140,10 @@ export default function StudentReport() {
     reportQuestions,
     knowledgeNodes,
   });
+  const questionDetailsLoading = hasFullAnswers
+    && answerSource.length > 0
+    && reportQuestions.length === 0
+    && quizDetailLoading;
 
   // 從迷思清單反查涉及的知識節點（in-memory 快照可從 answerSource 直接拿，
   // DB 摘要則靠迷思 → 節點對應）。
@@ -366,6 +374,12 @@ export default function StudentReport() {
                 })}
               </div>
             </>
+          ) : questionDetailsLoading ? (
+            <div className="bg-white border-[3px] border-[#C19A6B] rounded-[24px] p-6 text-center
+                            shadow-[0_4px_0_-1px_#8B6B43,0_6px_10px_-3px_rgba(91,66,38,0.2)]">
+              <Icon name="hourglass_empty" filled className="text-5xl text-[#C19A6B]" />
+              <p className="font-game font-black text-base text-[#7A5232] mt-2">正在載入題目結果…</p>
+            </div>
           ) : (
             <div className="bg-white border-[3px] border-[#C19A6B] rounded-[24px] p-6 text-center
                             shadow-[0_4px_0_-1px_#8B6B43,0_6px_10px_-3px_rgba(91,66,38,0.2)]">
